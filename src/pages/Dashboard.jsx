@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import React from 'react';
 import { 
   Receipt, 
   IndianRupee, 
@@ -11,63 +10,13 @@ import {
   Plus
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-
-const DASHBOARD_CACHE_KEY = 'billflow_dashboard_cache_v1';
-const DASHBOARD_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
-
-const readCachedDashboard = () => {
-  try {
-    const raw = sessionStorage.getItem(DASHBOARD_CACHE_KEY);
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!parsed?.timestamp || Date.now() - parsed.timestamp > DASHBOARD_CACHE_MAX_AGE_MS) {
-      return null;
-    }
-
-    return parsed.stats || null;
-  } catch {
-    return null;
-  }
-};
+import { useAuth } from '../context/AuthContext';
 
 const Dashboard = () => {
-  const cachedStats = readCachedDashboard();
-  const [stats, setStats] = useState(cachedStats);
-  const [loading, setLoading] = useState(!cachedStats);
-  const [error, setError] = useState('');
+  const { dashboardStats: stats } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const response = await api.get('/api/reports');
-        setStats(response.data);
-        sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({
-          timestamp: Date.now(),
-          stats: response.data,
-        }));
-      } catch (err) {
-        console.error("Error loading dashboard metrics:", err);
-        if (!cachedStats) {
-          setError('Failed to load dashboard metrics. Check server connectivity.');
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (cachedStats) {
-      setStats(cachedStats);
-      setLoading(false);
-    }
-
-    fetchStats();
-  }, []);
-
-  if (loading) {
+  if (!stats) {
     return (
       <div className="flex-grow flex items-center justify-center p-12">
         <div className="flex flex-col items-center gap-3">
@@ -103,12 +52,6 @@ const Dashboard = () => {
           Create New Bill
         </Link>
       </div>
-
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 text-red-600 text-sm border border-red-200">
-          {error}
-        </div>
-      )}
 
       {/* Cards Aggregates Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

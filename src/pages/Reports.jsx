@@ -1,129 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import React, { useState } from 'react';
 import { 
-  BarChart3, 
   TrendingUp, 
   Calendar, 
   User, 
   History, 
   Search,
-  IndianRupee,
-  Receipt,
   FileText
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-
-const REPORT_CACHE_KEY = 'billflow_reports_cache_v1';
-const REPORT_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
-
-const readCachedReports = () => {
-  try {
-    const raw = sessionStorage.getItem(REPORT_CACHE_KEY);
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!parsed?.timestamp || Date.now() - parsed.timestamp > REPORT_CACHE_MAX_AGE_MS) {
-      return null;
-    }
-
-    return parsed;
-  } catch {
-    return null;
-  }
-};
+import { useAuth } from '../context/AuthContext';
 
 const Reports = () => {
   const [activeTab, setActiveTab] = useState('history'); // 'history', 'daily', 'monthly', 'customers'
-  
-  // Data states
-  const cachedReports = readCachedReports();
-  const [historyList, setHistoryList] = useState(cachedReports?.historyList || []);
-  const [dailyList, setDailyList] = useState(cachedReports?.dailyList || []);
-  const [monthlyList, setMonthlyList] = useState(cachedReports?.monthlyList || []);
-  const [customerStatsList, setCustomerStatsList] = useState(cachedReports?.customerStatsList || []);
-  
-  const [loading, setLoading] = useState(!cachedReports);
-  const [error, setError] = useState('');
+  const { reportsData } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const cached = readCachedReports();
-    if (cached) {
-      setHistoryList(cached.historyList || []);
-      setDailyList(cached.dailyList || []);
-      setMonthlyList(cached.monthlyList || []);
-      setCustomerStatsList(cached.customerStatsList || []);
-      setLoading(false);
-    }
-
-    fetchReportData(cached);
-  }, []);
-
-  const fetchReportData = async (cached = null) => {
-    if (!cached) {
-      setLoading(true);
-    }
-    setError('');
-    try {
-      const [historyRes, dailyRes, monthlyRes] = await Promise.all([
-        api.get('/api/bills'),
-        api.get('/api/reports/daily'),
-        api.get('/api/reports/monthly')
-      ]);
-
-      const nextHistoryList = historyRes.data || [];
-      const nextDailyList = dailyRes.data || [];
-      const nextMonthlyList = monthlyRes.data || [];
-      const nextCustomerStatsList = computeCustomerSummaries(nextHistoryList);
-
-      setHistoryList(nextHistoryList);
-      setDailyList(nextDailyList);
-      setMonthlyList(nextMonthlyList);
-      setCustomerStatsList(nextCustomerStatsList);
-
-      sessionStorage.setItem(REPORT_CACHE_KEY, JSON.stringify({
-        timestamp: Date.now(),
-        historyList: nextHistoryList,
-        dailyList: nextDailyList,
-        monthlyList: nextMonthlyList,
-        customerStatsList: nextCustomerStatsList,
-      }));
-
-    } catch (err) {
-      console.error("Failed to load reports data", err);
-      if (!cached) {
-        setError("Failed to fetch reporting parameters. Please verify server connection.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const computeCustomerSummaries = (bills) => {
-    const clientsMap = {};
-    bills.forEach(bill => {
-      const mobile = bill.customerMobile;
-      if (!clientsMap[mobile]) {
-        clientsMap[mobile] = {
-          customerName: bill.customerName,
-          customerMobile: mobile,
-          totalRevenue: 0,
-          billCount: 0,
-          lastBillingDate: bill.billDate
-        };
-      }
-      clientsMap[mobile].totalRevenue += bill.grandTotal;
-      clientsMap[mobile].billCount += 1;
-      // compare dates
-      if (new Date(bill.billDate) > new Date(clientsMap[mobile].lastBillingDate)) {
-        clientsMap[mobile].lastBillingDate = bill.billDate;
-      }
-    });
-    return Object.values(clientsMap);
-  };
+  const historyList = reportsData?.historyList || [];
+  const dailyList = reportsData?.dailyList || [];
+  const monthlyList = reportsData?.monthlyList || [];
+  const customerStatsList = reportsData?.customerStatsList || [];
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('en-IN', {
@@ -150,12 +46,6 @@ const Reports = () => {
         <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900">Reports & Analytics</h1>
         <p className="text-sm text-slate-500 mt-1">Review revenue logs, historical records, and client totals.</p>
       </div>
-
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 text-red-600 text-sm border border-red-200">
-          {error}
-        </div>
-      )}
 
       {/* Tabs list */}
       <div className="flex flex-wrap border-b border-slate-200 gap-1.5">
@@ -221,8 +111,8 @@ const Reports = () => {
 
       {/* Main Tables Container */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
-        {loading ? (
-          <div className="py-20 text-center text-slate-400 font-semibold">Loading Report Parameters...</div>
+        {!reportsData ? (
+          <div className="py-20 text-center text-slate-400 font-semibold">Loading reports...</div>
         ) : (
           <div>
             
