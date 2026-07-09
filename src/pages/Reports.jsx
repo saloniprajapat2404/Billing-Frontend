@@ -13,46 +13,90 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+const REPORT_CACHE_KEY = 'billflow_reports_cache_v1';
+const REPORT_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
+const readCachedReports = () => {
+  try {
+    const raw = sessionStorage.getItem(REPORT_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.timestamp || Date.now() - parsed.timestamp > REPORT_CACHE_MAX_AGE_MS) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
 const Reports = () => {
   const [activeTab, setActiveTab] = useState('history'); // 'history', 'daily', 'monthly', 'customers'
   
   // Data states
-  const [historyList, setHistoryList] = useState([]);
-  const [dailyList, setDailyList] = useState([]);
-  const [monthlyList, setMonthlyList] = useState([]);
-  const [customerStatsList, setCustomerStatsList] = useState([]);
+  const cachedReports = readCachedReports();
+  const [historyList, setHistoryList] = useState(cachedReports?.historyList || []);
+  const [dailyList, setDailyList] = useState(cachedReports?.dailyList || []);
+  const [monthlyList, setMonthlyList] = useState(cachedReports?.monthlyList || []);
+  const [customerStatsList, setCustomerStatsList] = useState(cachedReports?.customerStatsList || []);
   
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedReports);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchReportData();
+    const cached = readCachedReports();
+    if (cached) {
+      setHistoryList(cached.historyList || []);
+      setDailyList(cached.dailyList || []);
+      setMonthlyList(cached.monthlyList || []);
+      setCustomerStatsList(cached.customerStatsList || []);
+      setLoading(false);
+    }
+
+    fetchReportData(cached);
   }, []);
 
-  const fetchReportData = async () => {
-    setLoading(true);
+  const fetchReportData = async (cached = null) => {
+    if (!cached) {
+      setLoading(true);
+    }
     setError('');
     try {
-      // 1. Fetch History List
-      const historyRes = await api.get('/api/bills');
-      setHistoryList(historyRes.data);
+      const [historyRes, dailyRes, monthlyRes] = await Promise.all([
+        api.get('/api/bills'),
+        api.get('/api/reports/daily'),
+        api.get('/api/reports/monthly')
+      ]);
 
-      // 2. Fetch Daily Report Aggregates
-      const dailyRes = await api.get('/api/reports/daily');
-      setDailyList(dailyRes.data);
+      const nextHistoryList = historyRes.data || [];
+      const nextDailyList = dailyRes.data || [];
+      const nextMonthlyList = monthlyRes.data || [];
+      const nextCustomerStatsList = computeCustomerSummaries(nextHistoryList);
 
-      // 3. Fetch Monthly Report Aggregates
-      const monthlyRes = await api.get('/api/reports/monthly');
-      setMonthlyList(monthlyRes.data);
+      setHistoryList(nextHistoryList);
+      setDailyList(nextDailyList);
+      setMonthlyList(nextMonthlyList);
+      setCustomerStatsList(nextCustomerStatsList);
 
-      // 4. Compute Customer Aggregates locally from history
-      computeCustomerSummaries(historyRes.data);
+      sessionStorage.setItem(REPORT_CACHE_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        historyList: nextHistoryList,
+        dailyList: nextDailyList,
+        monthlyList: nextMonthlyList,
+        customerStatsList: nextCustomerStatsList,
+      }));
 
     } catch (err) {
       console.error("Failed to load reports data", err);
-      setError("Failed to fetch reporting parameters. Please verify server connection.");
+      if (!cached) {
+        setError("Failed to fetch reporting parameters. Please verify server connection.");
+      }
     } finally {
       setLoading(false);
     }
@@ -78,7 +122,7 @@ const Reports = () => {
         clientsMap[mobile].lastBillingDate = bill.billDate;
       }
     });
-    setCustomerStatsList(Object.values(clientsMap));
+    return Object.values(clientsMap);
   };
 
   const formatCurrency = (val) => {
