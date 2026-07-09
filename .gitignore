@@ -1,0 +1,16 @@
+# Maven
+backend/target/
+
+# IntelliJ
+backend/.idea/
+*.iml
+
+# React
+frontend/node_modules/
+frontend/dist/
+
+# VS Code
+.vscode/
+
+# Environment
+.env
