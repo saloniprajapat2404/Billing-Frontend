@@ -231,7 +231,228 @@ const Billing = () => {
   };
 
   const printInvoice = () => {
-    window.print();
+    if (!activePreviewBill) {
+      showAlert('error', 'Select an invoice before printing or downloading.');
+      return;
+    }
+
+    const escapeHtml = (value) =>
+      String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+
+    const formatDateTime = (value) =>
+      new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+    const formatMoney = (value) =>
+      new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR'
+      }).format(value || 0);
+
+    const itemsHtml = activePreviewBill.items
+      .map(
+        (item) => `
+          <tr>
+            <td>${escapeHtml(item.itemName)}</td>
+            <td style="text-align:center;">${escapeHtml(item.quantity)}</td>
+            <td style="text-align:right;">${escapeHtml(formatMoney(item.price))}</td>
+            <td style="text-align:right;">${escapeHtml(formatMoney(item.total))}</td>
+          </tr>
+        `
+      )
+      .join('');
+
+    const printWindow = window.open('', '_blank', 'width=900,height=1200');
+    if (!printWindow) {
+      showAlert('error', 'Popup blocked. Please allow popups to print or save the invoice.');
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>${escapeHtml(activePreviewBill.invoiceNumber)} - BillFlow Invoice</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              font-family: Arial, sans-serif;
+              color: #0f172a;
+              background: #fff;
+            }
+            .page {
+              width: 210mm;
+              min-height: 297mm;
+              padding: 18mm;
+              margin: 0 auto;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 24px;
+              padding-bottom: 18px;
+              border-bottom: 1px solid #e2e8f0;
+            }
+            .title {
+              margin: 0;
+              font-size: 28px;
+              line-height: 1;
+              letter-spacing: -0.04em;
+            }
+            .subtitle {
+              margin: 8px 0 0;
+              color: #2563eb;
+              font-size: 12px;
+              font-weight: 700;
+            }
+            .company {
+              text-align: right;
+            }
+            .company h4 {
+              margin: 0;
+              font-size: 15px;
+            }
+            .company p,
+            .meta,
+            .footer-note,
+            .terms {
+              margin: 4px 0 0;
+              color: #64748b;
+              font-size: 12px;
+              line-height: 1.5;
+            }
+            .billing {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 16px;
+              margin: 22px 0;
+            }
+            .label {
+              display: block;
+              margin-bottom: 6px;
+              color: #94a3b8;
+              font-size: 10px;
+              font-weight: 700;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+            }
+            .name {
+              font-size: 16px;
+              font-weight: 800;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            thead th {
+              padding: 12px 0;
+              color: #94a3b8;
+              font-size: 10px;
+              text-transform: uppercase;
+              letter-spacing: 0.08em;
+              border-bottom: 1px solid #cbd5e1;
+            }
+            tbody td {
+              padding: 12px 0;
+              border-bottom: 1px solid #e2e8f0;
+              font-size: 12px;
+            }
+            .summary {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              gap: 16px;
+              margin-top: 20px;
+              padding-top: 16px;
+              border-top: 1px solid #cbd5e1;
+            }
+            .grand-total {
+              font-size: 30px;
+              font-weight: 900;
+            }
+            .footer-note {
+              padding-top: 16px;
+              margin-top: 18px;
+              border-top: 1px solid #e2e8f0;
+              text-align: center;
+              font-size: 10px;
+            }
+            @page { size: A4; margin: 12mm; }
+            @media print {
+              .page { width: auto; min-height: auto; padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <div class="header">
+              <div>
+                <h1 class="title">INVOICE</h1>
+                <p class="subtitle">${escapeHtml(activePreviewBill.invoiceNumber)}</p>
+              </div>
+              <div class="company">
+                <h4>BillFlow Corp</h4>
+                <p>Finance Suite Center<br />Tech Park Way, FL</p>
+              </div>
+            </div>
+
+            <div class="billing">
+              <div>
+                <span class="label">Billed To</span>
+                <div class="name">${escapeHtml(activePreviewBill.customerName)}</div>
+                <div class="meta">${escapeHtml(activePreviewBill.customerMobile)}</div>
+              </div>
+              <div style="text-align:right;">
+                <span class="label">Invoice Date</span>
+                <div class="meta" style="font-size: 14px; font-weight: 700; color: #0f172a;">${escapeHtml(formatDateTime(activePreviewBill.billDate))}</div>
+              </div>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align:left;">Item Description</th>
+                  <th style="text-align:center;">Qty</th>
+                  <th style="text-align:right;">Price</th>
+                  <th style="text-align:right;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+
+            <div class="summary">
+              <div>
+                <span class="label">Payment Terms</span>
+                <div class="terms">Due immediately upon receipt.</div>
+              </div>
+              <div style="text-align:right;">
+                <span class="label">Grand Total</span>
+                <div class="grand-total">${escapeHtml(formatMoney(activePreviewBill.grandTotal))}</div>
+              </div>
+            </div>
+
+            <div class="footer-note">Thank you for your business! Generated via BillFlow Suite.</div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onload = () => {
+      printWindow.print();
+      printWindow.close();
+    };
   };
 
   const formatCurrency = (val) => {
@@ -620,27 +841,6 @@ const Billing = () => {
 
       </div>
 
-      {/* Embedded CSS for clean browser printing layouts */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #printable-invoice, #printable-invoice * {
-            visibility: visible;
-          }
-          #printable-invoice {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            border: none !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-        }
-      `}</style>
     </div>
   );
 };
